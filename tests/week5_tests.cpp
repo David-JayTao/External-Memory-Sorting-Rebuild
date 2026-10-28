@@ -1,9 +1,58 @@
 #include "test_support.h"
 #include "external/replacement_selection.h"
+#include "external/merge.h"
 #include <algorithm>
 #include <limits>
 #include <random>
 using namespace external;
+
+// 小规模穷举所有二路合并顺序，独立验证贪心计划的最小成本。
+std::uint64_t exhaustive_cost(const std::vector<std::uint64_t>& lengths) {
+    if (lengths.size() < 2) return 0;
+    auto best = std::numeric_limits<std::uint64_t>::max();
+    for (std::size_t first = 0; first < lengths.size(); ++first) {
+        for (std::size_t second = first + 1; second < lengths.size(); ++second) {
+            std::vector<std::uint64_t> remaining;
+            for (std::size_t index = 0; index < lengths.size(); ++index)
+                if (index != first && index != second) remaining.push_back(lengths[index]);
+            const auto merged = lengths[first] + lengths[second];
+            remaining.push_back(merged);
+            best = std::min(best, merged + exhaustive_cost(remaining));
+        }
+    }
+    return best;
+}
+void test_optimal(const std::filesystem::path& directory) {
+    std::size_t case_id = 0;
+    for (const auto& lengths : std::vector<std::vector<std::uint64_t>>{
+             {}, {0}, {1}, {0, 0, 1}, {1, 2, 3, 10}, {2, 2, 2, 2, 2}, {0, 3, 7, 1, 4}}) {
+        const auto source = directory / ("optimal" + std::to_string(case_id++) + ".bin");
+        RunWriter writer(source, lengths.size());
+        std::vector<Value> expected;
+        for (auto length : lengths) {
+            writer.begin_run();
+            for (std::uint64_t index = 0; index < length; ++index) {
+                const auto value = static_cast<Value>(index);
+                writer.append_block(&value, 1);
+                expected.push_back(value);
+            }
+            writer.end_run();
+        }
+        writer.finish();
+        auto optimal = optimal_plan(source);
+        const auto balanced = balanced_plan(source);
+        const auto cost = optimal.root == -1 ? 0 : optimal.nodes[optimal.root].estimated_cost;
+        check(cost == exhaustive_cost(lengths), "Optimal cost vs exhaustive oracle");
+        if (lengths == std::vector<std::uint64_t>({1, 2, 3, 10})) {
+            check(cost == 25, "Huffman example cost");
+            check(balanced.nodes[balanced.root].estimated_cost == 32, "Balanced example cost");
+        }
+        const auto output = source.string() + "-sorted.bin";
+        execute_plan(optimal, output, source.string() + "-work", 2);
+        std::sort(expected.begin(), expected.end());
+        check(read_values(output) == expected, "Optimal execution result");
+    }
+}
 
 void test_loser_tree() {
     LoserTree tree({{4, 0, true}, {1, 0, true}, {3, 0, true}, {2, 0, true}});
@@ -40,6 +89,7 @@ int main() {
     try {
         TestDirectory directory;
         test_loser_tree();
+        test_optimal(directory.path);
         std::vector<std::vector<Value>> cases = {
             {}, {1}, {1, 2, 3, 4, 5, 6, 7, 8}, {8, 7, 6, 5, 4, 3, 2, 1},
             {4, 1, 3, 2, 6, 0, 5, 2}, {2, 2, 2, 2, 2},

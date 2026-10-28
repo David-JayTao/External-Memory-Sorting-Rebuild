@@ -25,6 +25,7 @@ struct MergePlan {
 void merge_two(const RunLocation& left, const RunLocation& right,
                const std::filesystem::path& output_path, std::size_t buffer_capacity);
 MergePlan balanced_plan(const std::filesystem::path& source_path);
+MergePlan optimal_plan(const std::filesystem::path& source_path);
 // work_directory 必须不存在。只删除本次创建的中间文件，不删除原始输入。
 void execute_plan(MergePlan& plan, const std::filesystem::path& output_path,
                   const std::filesystem::path& work_directory, std::size_t buffer_capacity);
