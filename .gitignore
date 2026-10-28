@@ -1,0 +1,17 @@
+/course_materials/
+/build*/
+/out/
+/.tools/
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.bin
+*.tmp
+/.vs/
+/.vscode/
+/test-output/
+/demo-output/
+__pycache__/
