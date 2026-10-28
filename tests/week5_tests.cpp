@@ -1,6 +1,7 @@
 #include "test_support.h"
 #include "external/replacement_selection.h"
 #include "external/merge.h"
+#include "external/pipeline.h"
 #include <algorithm>
 #include <limits>
 #include <random>
@@ -125,9 +126,18 @@ int main() {
                 check(actual == expected, "Replacement preserves all records");
                 if (!values.empty() && std::is_sorted(values.begin(), values.end()))
                     check(file.runs().size() == 1, "Sorted input produces one long run");
+                for (std::size_t buffer : {1, 2, 5}) {
+                    const auto parallel = base.string() + "-pipeline" + std::to_string(buffer) + ".bin";
+                    pipeline_runs(source, parallel, memory, buffer);
+                    check(read_values(parallel) == read_values(result), "Pipeline equals serial sequence");
+                    RunFile piped(parallel);
+                    check(piped.runs().size() == file.runs().size(), "Pipeline run count");
+                    for (std::size_t run = 0; run < file.runs().size(); ++run)
+                        check(piped.runs()[run].record_count == file.runs()[run].record_count, "Pipeline run boundaries");
+                }
             }
         }
-        std::cout << "Week 5 loser tree and replacement tests passed\n";
+        std::cout << "Week 5 loser tree, replacement, optimal plan and pipeline tests passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
