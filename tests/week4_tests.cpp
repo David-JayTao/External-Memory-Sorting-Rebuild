@@ -64,6 +64,20 @@ int main() {
         expect_error([&] { merge_two({directory.path / "unsorted.bin", 0}, {mixed, 1}, directory.path / "bad.bin", 1); });
         expect_error([&] { merge_two({mixed, 1}, {mixed, 3}, mixed, 1); });
         check(read_values(mixed) == std::vector<Value>({1, 1, 4, -2, 3}), "Input preserved");
+        write_values(directory.path / "single-run.bin", {1, 2});
+        auto leaf = balanced_plan(directory.path / "single-run.bin");
+        leaf.nodes[0].sequence_length = 3;
+        expect_error([&] { execute_plan(leaf, directory.path / "wrong-length.bin", directory.path / "leaf-work", 2); });
+        check(!std::filesystem::exists(directory.path / "leaf-work"), "Exception cleanup");
+        auto unsorted_plan = balanced_plan(directory.path / "unsorted.bin");
+        expect_error([&] { execute_plan(unsorted_plan, directory.path / "unsorted-copy.bin", directory.path / "unsorted-work", 1); });
+        check(!std::filesystem::exists(directory.path / "unsorted-work"), "Copy failure cleanup");
+        const auto protected_work = directory.path / "protected-work";
+        std::filesystem::create_directory(protected_work);
+        std::ofstream(protected_work / "keep.txt") << "keep";
+        auto valid_plan = balanced_plan(mixed);
+        expect_error([&] { execute_plan(valid_plan, directory.path / "protected.bin", protected_work, 2); });
+        check(std::filesystem::exists(protected_work / "keep.txt"), "Pre-existing work directory preserved");
         std::cout << "Week 4 generation, plan and merge tests passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

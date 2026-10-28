@@ -86,11 +86,41 @@ void test_loser_tree() {
         }
     }
 }
+void test_pipeline_failures(const std::filesystem::path& directory) {
+    const auto source = directory / "fault-input.bin";
+    write_values(source, {9, 1, 8, 2, 7, 3, 6, 4, 5, 0, -1, 2, 3, 4, 5});
+    std::size_t case_id = 0;
+    for (auto task : {PipelineTask::Read, PipelineTask::Compute, PipelineTask::Write, PipelineTask::LaunchWriter}) {
+        for (std::size_t stage : {0, 1, 3}) {
+            const auto output = directory / ("fault" + std::to_string(case_id++) + ".bin");
+            expect_error([&] { pipeline_runs(source, output, 3, 2, {task, stage}); });
+            expect_error([&] { RunFile unfinished(output); });
+            // 能立即重新打开并删除，说明异常路径已关闭文件并汇合线程。
+            check(std::filesystem::remove(output), "Failed output can be removed");
+        }
+    }
+    const auto recovered = directory / "recovered.bin";
+    pipeline_runs(source, recovered, 3, 2);
+    auto plan = optimal_plan(recovered);
+    execute_plan(plan, directory / "recovered-sorted.bin", directory / "recovered-work", 1);
+    auto expected = read_values(source);
+    std::sort(expected.begin(), expected.end());
+    check(read_values(directory / "recovered-sorted.bin") == expected, "Fresh call succeeds after faults");
+    expect_error([&] { pipeline_runs(source, directory / "zero.bin", 0, 2); });
+    expect_error([&] { pipeline_runs(source, directory / "zero.bin", 3, 0); });
+    expect_error([&] { replacement_runs(source, directory / "zero.bin", 0, 2); });
+    expect_error([&] { pipeline_runs(directory / "missing.bin", directory / "absent.bin", 3, 2); });
+    expect_error([&] { pipeline_runs(source, directory / "missing-parent" / "out.bin", 3, 2); });
+    const auto preserved = read_values(source);
+    expect_error([&] { pipeline_runs(source, source, 3, 2); });
+    check(read_values(source) == preserved, "Pipeline preserves existing output");
+}
 int main() {
     try {
         TestDirectory directory;
         test_loser_tree();
         test_optimal(directory.path);
+        test_pipeline_failures(directory.path);
         std::vector<std::vector<Value>> cases = {
             {}, {1}, {1, 2, 3, 4, 5, 6, 7, 8}, {8, 7, 6, 5, 4, 3, 2, 1},
             {4, 1, 3, 2, 6, 0, 5, 2}, {2, 2, 2, 2, 2},
@@ -134,6 +164,12 @@ int main() {
                     check(piped.runs().size() == file.runs().size(), "Pipeline run count");
                     for (std::size_t run = 0; run < file.runs().size(); ++run)
                         check(piped.runs()[run].record_count == file.runs()[run].record_count, "Pipeline run boundaries");
+                    if (buffer == 2) {
+                        auto plan = optimal_plan(parallel);
+                        const auto final_path = parallel + "-sorted.bin";
+                        execute_plan(plan, final_path, parallel + "-work", buffer);
+                        check(read_values(final_path) == expected, "Pipeline plus optimal merge end-to-end");
+                    }
                 }
             }
         }

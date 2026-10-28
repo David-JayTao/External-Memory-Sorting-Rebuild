@@ -127,6 +127,10 @@ MergePlan balanced_plan(const std::filesystem::path& source_path) {
             const auto& left = plan.nodes[parent.left];
             const auto& right = plan.nodes[parent.right];
             parent.sequence_length = left.sequence_length + right.sequence_length;
+            if (left.estimated_cost > std::numeric_limits<std::uint64_t>::max() - right.estimated_cost ||
+                left.estimated_cost + right.estimated_cost >
+                    std::numeric_limits<std::uint64_t>::max() - parent.sequence_length)
+                throw std::overflow_error("Merge cost overflow");
             parent.estimated_cost = left.estimated_cost + right.estimated_cost + parent.sequence_length;
             next_level.push_back(static_cast<int>(plan.nodes.size()));
             plan.nodes.push_back(parent);
@@ -153,7 +157,8 @@ void execute_plan(MergePlan& plan, const std::filesystem::path& output_path,
             empty.finish();
         } else if (plan.nodes[plan.root].is_leaf()) {
             auto& root = plan.nodes[plan.root];
-            copy_run(root.source, output_path, buffer_capacity);
+            const auto source = execute_node(plan, plan.root, output_path, work_directory, buffer_capacity);
+            copy_run(source, output_path, buffer_capacity);
             root.output_path = output_path;
             root.status = MergeStatus::Complete;
         } else {

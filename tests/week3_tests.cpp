@@ -73,6 +73,10 @@ int main() {
             expect_error([&] { InputBuffer invalid(buffered, 0, 0); });
         }
         check(!Search(file, 1, 4, 2), "Search empty run");
+        write_values(directory.path / "single.bin", {42});
+        check(read_values(directory.path / "single.bin") == std::vector<Value>({42}), "Single element");
+        expect_error([&] { Search(file, 3, 4, 2); });
+        expect_error([&] { RunFile missing(directory.path / "missing.bin"); });
         // 字节级检查独立于本项目读者，防止写者与读者共享同一种错误。
         std::ifstream raw(path, std::ios::binary);
         raw.seekg(144);
